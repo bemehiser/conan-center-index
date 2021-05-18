@@ -15,9 +15,9 @@ int main() {
     SDKOptions options;
     InitAPI(options);
     ClientConfiguration config;
-    auto client = MakeShared<S3Client>("pouet",
-            MakeShared<DefaultAWSCredentialsProviderChain>("pouet"), config,
-            AWSAuthV4Signer::PayloadSigningPolicy::Never /*signPayloads*/, true /*useVirtualAddressing*/, US_EAST_1_REGIONAL_ENDPOINT_OPTION::LEGACY);
+//    auto client = MakeShared<S3Client>("pouet",
+//            MakeShared<DefaultAWSCredentialsProviderChain>("pouet"), config,
+//            AWSAuthV4Signer::PayloadSigningPolicy::Never /*signPayloads*/, true /*useVirtualAddressing*/, US_EAST_1_REGIONAL_ENDPOINT_OPTION::REGIONAL);
     ShutdownAPI(options);
     return 0;
 }
