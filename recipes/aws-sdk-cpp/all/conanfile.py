@@ -11,7 +11,7 @@ class AwsSdkCppConan(ConanFile):
     topics = ("aws", "cpp", "cross-platform", "amazon", "cloud")
     settings = "os", "compiler", "build_type", "arch"
     exports_sources = ["CMakeLists.txt", "patches/**"]
-    generators = "cmake", "cmake_find_package"
+    generators = ("cmake", "cmake_find_package")
     _sdks = ("access-management",
             "accessanalyzer",
             "acm",
@@ -324,7 +324,7 @@ class AwsSdkCppConan(ConanFile):
                 See https://github.com/conan-io/conan-center-index/pull/4401#issuecomment-802631744""")
 
     def requirements(self):
-        self.requires("aws-c-event-stream/0.1.5")
+        self.requires("aws-crt-cpp/0.13.7")
         if self.settings.os != "Windows":
             self.requires("libcurl/7.74.0")
         if self.settings.os == "Linux":
@@ -354,7 +354,6 @@ class AwsSdkCppConan(ConanFile):
             if getattr(self.options, sdk):
                 build_only.append(sdk)
         self._cmake.definitions["BUILD_ONLY"] = ";".join(build_only)
-
         self._cmake.definitions["BUILD_DEPS"] = False
         self._cmake.definitions["ENABLE_UNITY_BUILD"] = True
         self._cmake.definitions["ENABLE_TESTING"] = False
@@ -390,7 +389,17 @@ class AwsSdkCppConan(ConanFile):
         self.cpp_info.components["core"].names["cmake_find_package_multi"] = "aws-sdk-cpp-core"
         self.cpp_info.components["core"].names["pkg_config"] = "aws-sdk-cpp-core"
         self.cpp_info.components["core"].libs = ["aws-cpp-sdk-core"]
-        self.cpp_info.components["core"].requires = ["aws-c-event-stream::aws-c-event-stream-lib"]
+
+        # TODO: Figure out what dependencies each component has
+        self.cpp_info.components["core"].requires = ["aws-crt-cpp::aws-c-auth"]
+        self.cpp_info.components["core"].requires = ["aws-crt-cpp::aws-c-cal"]
+        self.cpp_info.components["core"].requires = ["aws-crt-cpp::aws-c-common"]
+        self.cpp_info.components["core"].requires = ["aws-crt-cpp::aws-c-compression"]
+        self.cpp_info.components["core"].requires = ["aws-crt-cpp::aws-c-event-stream"]
+        self.cpp_info.components["core"].requires = ["aws-crt-cpp::aws-c-http"]
+        self.cpp_info.components["core"].requires = ["aws-crt-cpp::aws-c-io"]
+        self.cpp_info.components["core"].requires = ["aws-crt-cpp::aws-c-mqtt"]
+        self.cpp_info.components["core"].requires = ["aws-crt-cpp::aws-crt-cpp"]
 
         enabled_sdks = [sdk for sdk in self._sdks if getattr(self.options, sdk)]
         for hl_comp in self._internal_requirements.keys():

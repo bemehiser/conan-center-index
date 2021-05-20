@@ -11,13 +11,7 @@ sources:
 patches:
   "1.9.21":
     - base_path: source_subfolder
-      patch_file: patches/0001-disable-sort-links.patch
-    - base_path: source_subfolder
-      patch_file: patches/0004-improve-pulseaudio-detection.patch
-    - base_path: source_subfolder
-      patch_file: patches/0005-force-archive-directory-to-library-directory.patch
-    - base_path: source_subfolder
-      patch_file: patches/0006-disable-cmake-install-rpath-use-link-path.patch
+      patch_file: patches/0005-disable-werror.patch
   "1.8.130":
     - base_path: source_subfolder
       patch_file: patches/0001-disable-sort-links.patch

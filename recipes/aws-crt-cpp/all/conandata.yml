@@ -1,0 +1,6 @@
+sources:
+  "0.13.7":
+    sha256: "d41b64fa50faf8d041494289320b43935502e8602a3d03b5367c8cf998206f2e"
+    url: "https://github.com/awslabs/aws-crt-cpp/archive/v0.13.7.tar.gz"
+patches:
+  "0.13.7": []
