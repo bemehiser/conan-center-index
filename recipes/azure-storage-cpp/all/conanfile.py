@@ -25,7 +25,6 @@ class AzureStorageCpp(ConanFile):
         "libxml2/2.9.10",
         "cpprestsdk/2.10.18",
         "websocketpp/0.8.2",
-        # TODO: Might require libuuid
     )
 
     _cmake = None
@@ -33,6 +32,10 @@ class AzureStorageCpp(ConanFile):
     @property
     def _source_subfolder(self):
         return "source_subfolder"
+
+    def requirements(self):
+        if self.settings.os == "Linux":
+            self.requires('libuuid/1.0.3')
 
     def config_options(self):
         if self.settings.os == "Windows":
