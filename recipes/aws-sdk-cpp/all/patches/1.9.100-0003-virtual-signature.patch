@@ -1,0 +1,13 @@
+diff --git a/aws-cpp-sdk-core/include/aws/core/client/AWSClient.h b/aws-cpp-sdk-core/include/aws/core/client/AWSClient.h
+index 417deea901..3ac980d979 100644
+--- a/aws-cpp-sdk-core/include/aws/core/client/AWSClient.h
++++ b/aws-cpp-sdk-core/include/aws/core/client/AWSClient.h
+@@ -280,7 +280,7 @@ namespace Aws
+             /**
+              * Gets the corresponding signer from the signers map by name.
+              */
+-            Aws::Client::AWSAuthSigner* GetSignerByName(const char* name) const;
++            virtual Aws::Client::AWSAuthSigner* GetSignerByName(const char* name) const;
+         protected:
+
+             /**

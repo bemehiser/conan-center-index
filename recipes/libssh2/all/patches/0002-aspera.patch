@@ -1,0 +1,278 @@
+Index: include/libssh2.h
+===================================================================
+--- include/libssh2.h	(revision 177683)
++++ include/libssh2.h	(revision 178739)
+@@ -47,5 +47,6 @@
+    banner. Release versions have no appended strings and may of course not
+    have dashes either. */
+-#define LIBSSH2_VERSION "1.9.0"
++// IBM/Aspera version string customization (previously, "1.9.0")
++#define LIBSSH2_VERSION "1.9.0 IBM Aspera"
+
+ /* The numeric version number is also available "in parts" by using these
+@@ -236,6 +237,6 @@
+ /* Default generate and safe prime sizes for
+    diffie-hellman-group-exchange-sha1 */
+-#define LIBSSH2_DH_GEX_MINGROUP     1024
+-#define LIBSSH2_DH_GEX_OPTGROUP     1536
++#define LIBSSH2_DH_GEX_MINGROUP     2048
++#define LIBSSH2_DH_GEX_OPTGROUP     2048
+ #define LIBSSH2_DH_GEX_MAXGROUP     2048
+
+@@ -1327,4 +1328,5 @@
+ #define LIBSSH2_TRACE_PUBLICKEY (1<<8)
+ #define LIBSSH2_TRACE_SOCKET (1<<9)
++#define LIBSSH2_TRACE_EAGAIN (1<<10)
+
+ typedef void (*libssh2_trace_handler_func)(LIBSSH2_SESSION*,
+Index: src/agent.c
+===================================================================
+--- src/agent.c	(revision 177683)
++++ src/agent.c	(revision 178739)
+@@ -154,5 +154,5 @@
+         path = getenv("SSH_AUTH_SOCK");
+         if(!path)
+-            return _libssh2_error(agent->session, LIBSSH2_ERROR_BAD_USE,
++            return _libssh2_error(agent->session, LIBSSH2_ERROR_SOCKET_NONE,
+                                   "no auth sock variable");
+     }
+Index: src/channel.c
+===================================================================
+--- src/channel.c	(revision 177683)
++++ src/channel.c	(revision 178739)
+@@ -1631,53 +1631,47 @@
+         *store = channel->remote.window_size;
+
+-    if(channel->adjust_state == libssh2_NB_state_idle) {
+-        if(!force
+-            && (adjustment + channel->adjust_queue <
+-                LIBSSH2_CHANNEL_MINADJUST)) {
+-            _libssh2_debug(channel->session, LIBSSH2_TRACE_CONN,
+-                           "Queueing %lu bytes for receive window adjustment "
+-                           "for channel %lu/%lu",
+-                           adjustment, channel->local.id, channel->remote.id);
+-            channel->adjust_queue += adjustment;
+-            return 0;
+-        }
+-
+-        if(!adjustment && !channel->adjust_queue) {
+-            return 0;
+-        }
+-
+-        adjustment += channel->adjust_queue;
+-        channel->adjust_queue = 0;
+-
+-        /* Adjust the window based on the block we just freed */
+-        channel->adjust_adjust[0] = SSH_MSG_CHANNEL_WINDOW_ADJUST;
+-        _libssh2_htonu32(&channel->adjust_adjust[1], channel->remote.id);
+-        _libssh2_htonu32(&channel->adjust_adjust[5], adjustment);
++    if(!force && !channel->adjust_blocked
++        && (adjustment + channel->adjust_queue <
++            LIBSSH2_CHANNEL_MINADJUST)) {
+         _libssh2_debug(channel->session, LIBSSH2_TRACE_CONN,
+-                       "Adjusting window %lu bytes for data on "
+-                       "channel %lu/%lu",
++                       "Queueing %lu bytes for receive window adjustment "
++                       "for channel %lu/%lu",
+                        adjustment, channel->local.id, channel->remote.id);
+-
+-        channel->adjust_state = libssh2_NB_state_created;
+-    }
++        channel->adjust_queue += adjustment;
++        return 0;
++    }
++
++    if(!adjustment && !channel->adjust_queue) {
++        return 0;
++    }
++
++    adjustment += channel->adjust_queue;
++
++    /* Adjust the window based on the block we just freed */
++    channel->adjust_adjust[0] = SSH_MSG_CHANNEL_WINDOW_ADJUST;
++    _libssh2_htonu32(&channel->adjust_adjust[1], channel->remote.id);
++    _libssh2_htonu32(&channel->adjust_adjust[5], adjustment);
++    _libssh2_debug(channel->session, LIBSSH2_TRACE_CONN,
++                   "Adjusting window %lu bytes for data on "
++                   "channel %lu/%lu",
++                   adjustment, channel->local.id, channel->remote.id);
+
+     rc = _libssh2_transport_send(channel->session, channel->adjust_adjust, 9,
+                                  NULL, 0);
+     if(rc == LIBSSH2_ERROR_EAGAIN) {
+-        _libssh2_error(channel->session, rc,
+-                       "Would block sending window adjust");
+-        return rc;
+-    }
+-    else if(rc) {
+         channel->adjust_queue = adjustment;
+-        return _libssh2_error(channel->session, LIBSSH2_ERROR_SOCKET_SEND,
++        channel->adjust_blocked = 1;
++        return _libssh2_error(channel->session, LIBSSH2_ERROR_NONE,
+                               "Unable to send transfer-window adjustment "
+                               "packet, deferring");
+     }
++    else if(rc) {
++        return rc;
++    }
+     else {
++        channel->adjust_queue = 0;
+         channel->remote.window_size += adjustment;
+-    }
+-
+-    channel->adjust_state = libssh2_NB_state_idle;
++        channel->adjust_blocked = 0;
++    }
+
+     return 0;
+@@ -1758,5 +1752,5 @@
+     }
+
+-    if(channel->extData2_state == libssh2_NB_state_idle) {
++    if(channel->extData2_state == libssh2_NB_state_created) {
+         if(ignore_mode == LIBSSH2_CHANNEL_EXTENDED_DATA_IGNORE) {
+             int rc =
+@@ -1853,5 +1847,5 @@
+         rc = _libssh2_channel_receive_window_adjust(channel, adjustment,
+                                                     0, NULL);
+-        if(rc)
++        if(rc == LIBSSH2_ERROR_EAGAIN)
+             return rc;
+
+@@ -2348,5 +2342,6 @@
+      */
+     do {
+-        if(channel->remote.eof) {
++        if(channel->remote.eof ||
++                session->socket_state == LIBSSH2_SOCKET_DISCONNECTED) {
+             break;
+         }
+Index: src/keepalive.c
+===================================================================
+--- src/keepalive.c	(revision 177683)
++++ src/keepalive.c	(revision 178739)
+@@ -87,4 +87,6 @@
+             return rc;
+         }
++        if (rc != LIBSSH2_ERROR_EAGAIN)
++            ++session->keepalives_outstanding;
+
+         session->keepalive_last_sent = now;
+Index: src/libssh2_priv.h
+===================================================================
+--- src/libssh2_priv.h	(revision 177683)
++++ src/libssh2_priv.h	(revision 178739)
+@@ -423,4 +423,5 @@
+     /* State variables used in libssh2_channel_receive_window_adjust() */
+     libssh2_nonblocking_states adjust_state;
++    int adjust_blocked;
+     unsigned char adjust_adjust[9];     /* packet_type(1) + channel(4) +
+                                            adjustment(4) */
+@@ -843,4 +844,5 @@
+     int keepalive_want_reply;
+     time_t keepalive_last_sent;
++    int keepalives_outstanding;
+ };
+
+Index: src/misc.c
+===================================================================
+--- src/misc.c	(revision 177683)
++++ src/misc.c	(revision 178739)
+@@ -92,6 +92,7 @@
+            a debug output for this */
+         return errcode;
+-    _libssh2_debug(session, LIBSSH2_TRACE_ERROR, "%d - %s", session->err_code,
+-                   session->err_msg);
++    _libssh2_debug(session, LIBSSH2_ERROR_EAGAIN ?
++                                LIBSSH2_TRACE_EAGAIN : LIBSSH2_TRACE_ERROR,
++        "%d - %s", session->err_code, session->err_msg);
+ #endif
+
+@@ -446,4 +447,5 @@
+         "Publickey",
+         "Socket",
++        "Would Block"
+     };
+     const char *contexttext = contexts[0];
+Index: src/packet.c
+===================================================================
+--- src/packet.c	(revision 177683)
++++ src/packet.c	(revision 178739)
+@@ -444,4 +444,10 @@
+                                   "Invalid MAC received");
+         }
++        if (session->keepalives_outstanding != 0 &&
++            *data == SSH_MSG_REQUEST_FAILURE) {
++            --session->keepalives_outstanding;
++            LIBSSH2_FREE(session, data);
++            return 0;
++        }
+         session->packAdd_state = libssh2_NB_state_allocated;
+         break;
+@@ -729,4 +735,5 @@
+                 datalen = channelp->remote.window_size -
+                     channelp->read_avail + data_head;
++                channelp->remote.window_size = 0;
+             }
+
+Index: src/session.c
+===================================================================
+--- src/session.c	(revision 177683)
++++ src/session.c	(revision 178739)
+@@ -1555,10 +1555,10 @@
+             if(fds[i].events & LIBSSH2_POLLFD_POLLIN) {
+                 FD_SET(fds[i].fd.socket, &rfds);
+-                if(fds[i].fd.socket > maxfd)
++                if(((libssh2_socket_t)fds[i].fd.socket) > maxfd)
+                     maxfd = fds[i].fd.socket;
+             }
+             if(fds[i].events & LIBSSH2_POLLFD_POLLOUT) {
+                 FD_SET(fds[i].fd.socket, &wfds);
+-                if(fds[i].fd.socket > maxfd)
++                if(((libssh2_socket_t)fds[i].fd.socket) > maxfd)
+                     maxfd = fds[i].fd.socket;
+             }
+Index: src/transport.c
+===================================================================
+--- src/transport.c	(revision 177683)
++++ src/transport.c	(revision 178739)
+@@ -646,15 +646,17 @@
+     length = p->ototal_num - p->osent;
+
+-    rc = LIBSSH2_SEND(session, &p->outbuf[p->osent], length,
+-                       LIBSSH2_SOCKET_SEND_FLAGS(session));
+-    if(rc < 0)
+-        _libssh2_debug(session, LIBSSH2_TRACE_SOCKET,
+-                       "Error sending %d bytes: %d", length, -rc);
+-    else {
+-        _libssh2_debug(session, LIBSSH2_TRACE_SOCKET,
+-                       "Sent %d/%d bytes at %p+%d", rc, length, p->outbuf,
+-                       p->osent);
+-        debugdump(session, "libssh2_transport_write send()",
+-                  &p->outbuf[p->osent], rc);
++    if (length) {
++        rc = LIBSSH2_SEND(session, &p->outbuf[p->osent], length,
++                           LIBSSH2_SOCKET_SEND_FLAGS(session));
++        if(rc < 0)
++            _libssh2_debug(session, LIBSSH2_TRACE_SOCKET,
++                           "Error sending %d bytes: %d", length, -rc);
++        else {
++            _libssh2_debug(session, LIBSSH2_TRACE_SOCKET,
++                           "Sent %d/%d bytes at %p+%d", rc, length, p->outbuf,
++                           p->osent);
++            debugdump(session, "libssh2_transport_write send()",
++                      &p->outbuf[p->osent], rc);
++        }
+     }
+
+Index: src/userauth.c
+===================================================================
+--- src/userauth.c	(revision 177683)
++++ src/userauth.c	(revision 178739)
+@@ -1279,5 +1279,5 @@
+         unsigned char *buf;
+         unsigned char *sig;
+-        size_t sig_len;
++        size_t sig_len = 0;
+
+         s = buf = LIBSSH2_ALLOC(session, 4 + session->session_id_len

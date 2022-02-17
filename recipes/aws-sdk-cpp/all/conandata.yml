@@ -11,6 +11,8 @@ patches:
       patch_file: patches/1.9.100-0001-disable-sort-links.patch
     - base_path: source_subfolder
       patch_file: patches/1.9.100-0002-aws-plugin-conf.patch
+    - base_path: source_subfolder
+      patch_file: patches/1.9.100-0003-virtual-signature.patch
   "1.8.130":
     - base_path: source_subfolder
       patch_file: patches/1.8.130-0001-disable-sort-links.patch
@@ -22,3 +24,5 @@ patches:
       patch_file: patches/1.8.130-0004-improve-pulseaudio-detection.patch
     - base_path: source_subfolder
       patch_file: patches/1.8.130-0005-aws-plugin-conf.patch
+    - base_path: source_subfolder
+      patch_file: patches/1.8.130-0006-virtual-signature.patch

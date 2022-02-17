@@ -22,6 +22,8 @@ patches:
       base_path: "source_subfolder"
     - patch_file: "patches/0002-remove-wconversion.patch"
       base_path: "source_subfolder"
+    - patch_file: "patches/0003-narrow-string-compatibility.patch"
+      base_path: "source_subfolder"
   "2.10.17":
     - patch_file: "patches/0003-find-cmake-targets.patch"
       base_path: "source_subfolder"

@@ -1,0 +1,1129 @@
+diff --git a/Microsoft.WindowsAzure.Storage/CMakeLists.txt b/Microsoft.WindowsAzure.Storage/CMakeLists.txt
+index ac9e65d..2c8e91b 100644
+--- a/Microsoft.WindowsAzure.Storage/CMakeLists.txt
++++ b/Microsoft.WindowsAzure.Storage/CMakeLists.txt
+@@ -56,8 +56,10 @@ if(UNIX)
+ 
+ 
+ elseif(WIN32)
++  find_package(Boost REQUIRED COMPONENTS date_time)
+   message("-- Setting WIN32 options")
+   find_package(cpprestsdk REQUIRED)
++  find_package(LibXML2 REQUIRED)
+   add_definitions(-DUNICODE -D_UNICODE -D_WIN32)
+ else()
+   message("-- Unsupported Build Platform.")
+@@ -113,6 +115,9 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+     add_definitions(-D_NO_WASTORAGE_API)
+   endif()
+ 
++  add_definitions(-DLIBXML_STATIC)
++  add_definitions(-DCPPREST_FORCE_HTTP_CLIENT_ASIO)
++
+   if(ENABLE_MT)
+     set(CompilerFlags
+             CMAKE_CXX_FLAGS
+diff --git a/Microsoft.WindowsAzure.Storage/cmake/Modules/FindLibXML2.cmake b/Microsoft.WindowsAzure.Storage/cmake/Modules/FindLibXML2.cmake
+index 085c942..6120b7f 100644
+--- a/Microsoft.WindowsAzure.Storage/cmake/Modules/FindLibXML2.cmake
++++ b/Microsoft.WindowsAzure.Storage/cmake/Modules/FindLibXML2.cmake
+@@ -27,7 +27,7 @@ find_path(LibXML2_ROOT_DIR
+ )
+ 
+ find_library(LibXML2_LIBRARY
+-    NAMES xml2
++    NAMES libxml2 libxml2.a libxml2.lib
+     HINTS ${LibXML2_ROOT_DIR}/lib
+ )
+ 
+diff --git a/Microsoft.WindowsAzure.Storage/includes/was/blob.h b/Microsoft.WindowsAzure.Storage/includes/was/blob.h
+index 6c1b336..5eab417 100644
+--- a/Microsoft.WindowsAzure.Storage/includes/was/blob.h
++++ b/Microsoft.WindowsAzure.Storage/includes/was/blob.h
+@@ -9284,6 +9284,11 @@ namespace azure { namespace storage {
+             return cloud_blob_directory(m_name, m_container);
+         }
+ 
++        const utility::string_t& name() const
++        {
++            return m_name;
++        }
++
+     private:
+ 
+         bool m_is_blob;
+diff --git a/Microsoft.WindowsAzure.Storage/includes/was/common.h b/Microsoft.WindowsAzure.Storage/includes/was/common.h
+index 6d62ced..38d5621 100644
+--- a/Microsoft.WindowsAzure.Storage/includes/was/common.h
++++ b/Microsoft.WindowsAzure.Storage/includes/was/common.h
+@@ -28,6 +28,7 @@
+ #include <boost/log/trivial.hpp>
+ #include <boost/log/sources/severity_logger.hpp>
+ #include <boost/asio/ip/address.hpp>
++#include <boost/asio/ssl/context.hpp>
+ #endif
+ 
+ #pragma push_macro("min")
+diff --git a/Microsoft.WindowsAzure.Storage/includes/wascore/xml_wrapper.h b/Microsoft.WindowsAzure.Storage/includes/wascore/xml_wrapper.h
+index 18ca989..5383699 100644
+--- a/Microsoft.WindowsAzure.Storage/includes/wascore/xml_wrapper.h
++++ b/Microsoft.WindowsAzure.Storage/includes/wascore/xml_wrapper.h
+@@ -27,7 +27,11 @@
+ #ifndef _XML_WRAPPER_H
+ #define _XML_WRAPPER_H
+ 
+-#ifndef _WIN32
++#if defined(_WIN32) && defined(_UTF16_STRINGS)
++#define _USE_XMLLITE
++#endif
++
++#ifndef _USE_XMLLITE
+ #include <string>
+ #include <libxml/xmlreader.h>
+ #include <libxml/xmlwriter.h>
+diff --git a/Microsoft.WindowsAzure.Storage/includes/wascore/xmlhelpers.h b/Microsoft.WindowsAzure.Storage/includes/wascore/xmlhelpers.h
+index 74d98ae..559de37 100644
+--- a/Microsoft.WindowsAzure.Storage/includes/wascore/xmlhelpers.h
++++ b/Microsoft.WindowsAzure.Storage/includes/wascore/xmlhelpers.h
+@@ -43,7 +43,12 @@
+ #pragma once
+ #ifndef _XMLHELPERS_H
+ #define _XMLHELPERS_H
+-#ifdef _WIN32
++
++#if defined(_WIN32) && defined(_UTF16_STRINGS)
++#define _USE_XMLLITE
++#endif
++
++#ifdef _USE_XMLLITE
+ #include <atlbase.h>
+ #include <xmllite.h>
+ #else
+@@ -185,12 +190,12 @@ protected:
+     /// </summary>
+     void pause() { m_continueParsing = false; }
+ 
+-#ifdef _WIN32
++#ifdef _USE_XMLLITE
+     CComPtr<IXmlReader> m_reader;
+ #else
+     std::shared_ptr<xml_text_reader_wrapper> m_reader;
+     std::string m_data;
+-#endif 
++#endif
+ 
+     std::vector<utility::string_t> m_elementStack;
+     bool m_continueParsing;
+@@ -208,7 +213,7 @@ public:
+ 
+ protected:
+ 
+-#ifdef _WIN32
++#ifdef _USE_XMLLITE
+     xml_writer()
+ #else // LINUX
+     xml_writer() :m_stream(nullptr)
+@@ -292,7 +297,7 @@ protected:
+         UNREFERENCED_PARAMETER(error);
+     }
+ private:
+-#ifdef _WIN32
++#ifdef _USE_XMLLITE
+     CComPtr<IXmlWriter> m_writer;
+ #else // LINUX
+     std::shared_ptr<xml_document_wrapper> m_document;
+diff --git a/Microsoft.WindowsAzure.Storage/src/CMakeLists.txt b/Microsoft.WindowsAzure.Storage/src/CMakeLists.txt
+index d775d23..1fd37f9 100644
+--- a/Microsoft.WindowsAzure.Storage/src/CMakeLists.txt
++++ b/Microsoft.WindowsAzure.Storage/src/CMakeLists.txt
+@@ -1,6 +1,13 @@
+ include_directories(${Boost_INCLUDE_DIR} ${OPENSSL_INCLUDE_DIR})
+ include_directories(${AZURESTORAGE_INCLUDE_DIRS})
+ 
++if (WIN32)
++  add_definitions("-D_NO_WASTORAGE_API")
++  add_definitions("-D_NO_ASYNCRTIMP")
++  add_definitions("-D_NO_PPLXIMPP")
++  add_definitions("-DLIBXML_STATIC")
++endif()
++
+ # THE ORDER OF FILES IS VERY /VERY/ IMPORTANT
+ if(UNIX OR WIN32)
+   set(SOURCES
+diff --git a/Microsoft.WindowsAzure.Storage/src/basic_types.cpp b/Microsoft.WindowsAzure.Storage/src/basic_types.cpp
+index d723ff3..24d2620 100644
+--- a/Microsoft.WindowsAzure.Storage/src/basic_types.cpp
++++ b/Microsoft.WindowsAzure.Storage/src/basic_types.cpp
+@@ -45,6 +45,7 @@ namespace utility {
+ #ifdef _WIN32
+         RPC_STATUS status;
+ 
++#ifdef _UTF16_STRINGS
+         RPC_WSTR rpc_string;
+         status = UuidToStringW(&value, &rpc_string);
+         if (status != RPC_S_OK)
+@@ -54,11 +55,28 @@ namespace utility {
+ 
+         std::wstring result(reinterpret_cast<wchar_t*>(rpc_string));
+ 
+-        status = RpcStringFree(&rpc_string);
++        status = RpcStringFreeW(&rpc_string);
+         if (status != RPC_S_OK)
+         {
+             throw std::runtime_error(azure::storage::protocol::error_free_uuid);
+         }
++#else
++        RPC_CSTR rpc_string;
++        status = UuidToStringA(&value, &rpc_string);
++        if (status != RPC_S_OK)
++        {
++            throw std::runtime_error(azure::storage::protocol::error_serialize_uuid);
++        }
++
++        std::string result(reinterpret_cast<char_t*>(rpc_string));
++
++        status = RpcStringFreeA(&rpc_string);
++        if (status != RPC_S_OK)
++        {
++            throw std::runtime_error(azure::storage::protocol::error_free_uuid);
++        }
++#endif
++
+ #else
+         char uuid_string[37];
+         uuid_unparse_upper(value.data, uuid_string);
+@@ -76,6 +94,7 @@ namespace utility {
+ #ifdef _WIN32
+         RPC_STATUS status;
+ 
++#ifdef _UTF16_STRINGS
+         RPC_WSTR rpc_string = reinterpret_cast<RPC_WSTR>(const_cast<wchar_t*>(value.c_str()));
+ 
+         status = UuidFromStringW(rpc_string, &result);
+@@ -83,6 +102,16 @@ namespace utility {
+         {
+             throw std::runtime_error(azure::storage::protocol::error_parse_uuid);
+         }
++#else
++        RPC_CSTR rpc_string = reinterpret_cast<RPC_CSTR>(const_cast<char_t*>(value.c_str()));
++
++        status = UuidFromStringA(rpc_string, &result);
++        if (status != RPC_S_OK)
++        {
++            throw std::runtime_error(azure::storage::protocol::error_parse_uuid);
++        }
++#endif
++
+ #else
+         int status_code = uuid_parse(value.c_str(), result.data);
+         if (status_code != 0)
+diff --git a/Microsoft.WindowsAzure.Storage/src/cloud_common.cpp b/Microsoft.WindowsAzure.Storage/src/cloud_common.cpp
+index 7dfcfeb..7132f96 100644
+--- a/Microsoft.WindowsAzure.Storage/src/cloud_common.cpp
++++ b/Microsoft.WindowsAzure.Storage/src/cloud_common.cpp
+@@ -40,7 +40,11 @@ namespace azure { namespace storage {
+         shared_access_policy::ip_address_or_range::ip_address ip;
+ #ifdef _WIN32
+         IN_ADDR addr;
++#ifdef _UTF16_STRINGS
+         int ret = InetPton(AF_INET, address.data(), &addr);
++#else
++        int ret = InetPtonA(AF_INET, address.data(), &addr);
++#endif
+         if (ret == 1)
+         {
+             ip.ipv4 = true;
+@@ -56,7 +60,11 @@ namespace azure { namespace storage {
+         if (ret == 0)
+         {
+             IN6_ADDR addr6;
++#ifdef _UTF16_STRINGS
+             ret = InetPton(AF_INET6, address.data(), &addr6);
++#else
++            ret = InetPtonA(AF_INET6, address.data(), &addr6);
++#endif
+             if (ret == 1)
+             {
+                 throw std::invalid_argument(protocol::error_ip_must_be_ipv4_in_sas);
+diff --git a/Microsoft.WindowsAzure.Storage/src/logging.cpp b/Microsoft.WindowsAzure.Storage/src/logging.cpp
+index 08118eb..b997343 100644
+--- a/Microsoft.WindowsAzure.Storage/src/logging.cpp
++++ b/Microsoft.WindowsAzure.Storage/src/logging.cpp
+@@ -83,7 +83,11 @@ namespace azure { namespace storage { namespace core {
+     {
+         if (g_event_provider_handle != NULL)
+         {
++#ifdef _UTF16_STRINGS
+             log(context, level, utility::conversions::to_utf16string(message));
++#else
++            log(context, level, message);
++#endif
+         }
+     }
+ 
+@@ -91,8 +95,8 @@ namespace azure { namespace storage { namespace core {
+     {
+         if (g_event_provider_handle != NULL)
+         {
+-            utf16string utf16_message;
+-            utf16string req_id_16 = utility::conversions::to_utf16string(context.client_request_id());
++            std::wstring utf16_message;
++            std::wstring req_id_16 = utility::conversions::to_wstring(context.client_request_id());
+ 
+             utf16_message.reserve(req_id_16.length() + wconnector.length() + message.length());
+             utf16_message.append(req_id_16);
+diff --git a/Microsoft.WindowsAzure.Storage/src/xml_wrapper.cpp b/Microsoft.WindowsAzure.Storage/src/xml_wrapper.cpp
+index 689f0cd..5f64c8a 100644
+--- a/Microsoft.WindowsAzure.Storage/src/xml_wrapper.cpp
++++ b/Microsoft.WindowsAzure.Storage/src/xml_wrapper.cpp
+@@ -26,7 +26,7 @@
+ #include "stdafx.h"
+ #include "wascore/xml_wrapper.h"
+ 
+-#ifndef _WIN32
++#ifndef _USE_XMLLITE
+ namespace azure { namespace storage { namespace core { namespace xml {
+ 
+ std::string xml_char_to_string(const xmlChar * xml_char)
+diff --git a/Microsoft.WindowsAzure.Storage/src/xmlhelpers.cpp b/Microsoft.WindowsAzure.Storage/src/xmlhelpers.cpp
+index bcb2488..50fa98b 100644
+--- a/Microsoft.WindowsAzure.Storage/src/xmlhelpers.cpp
++++ b/Microsoft.WindowsAzure.Storage/src/xmlhelpers.cpp
+@@ -42,7 +42,7 @@
+ #include "stdafx.h"
+ #include "wascore/xmlhelpers.h"
+ 
+-#ifdef _WIN32
++#ifdef _USE_XMLLITE
+ #include "wascore/xmlstream.h"
+ #else
+ typedef int XmlNodeType;
+@@ -58,468 +58,468 @@ using namespace concurrency;
+ 
+ namespace azure { namespace storage { namespace core { namespace xml {
+ 
+-    void xml_reader::initialize(streams::istream stream)
+-    {
+-#ifdef _WIN32
+-        HRESULT hr;
+-        CComPtr<IStream> pInputStream;
+-        pInputStream.Attach(xmlstring_istream::create(stream));
++void xml_reader::initialize(streams::istream stream)
++{
++#ifdef _USE_XMLLITE
++    HRESULT hr;
++    CComPtr<IStream> pInputStream;
++    pInputStream.Attach(xmlstring_istream::create(stream));
+ 
+-        if (pInputStream == nullptr)
+-        {
+-            auto error = ERROR_NOT_ENOUGH_MEMORY;
+-            log_error_message(_XPLATSTR("XML reader IStream creation failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
++    if (pInputStream == nullptr)
++    {
++        auto error = ERROR_NOT_ENOUGH_MEMORY;
++        log_error_message(_XPLATSTR("XML reader IStream creation failed"), error);
++        throw utility::details::create_system_error(error);
++    }
+ 
+-        if (FAILED(hr = CreateXmlReader(__uuidof(IXmlReader), (void**)&m_reader, NULL)))
+-        {
++    if (FAILED(hr = CreateXmlReader(__uuidof(IXmlReader), (void**)&m_reader, NULL)))
++    {
+ 
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML reader CreateXmlReader failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML reader CreateXmlReader failed"), error);
++        throw utility::details::create_system_error(error);
++    }
+ 
+-        if (FAILED(hr = m_reader->SetProperty(XmlReaderProperty_DtdProcessing, DtdProcessing_Prohibit)))
+-        {
++    if (FAILED(hr = m_reader->SetProperty(XmlReaderProperty_DtdProcessing, DtdProcessing_Prohibit)))
++    {
+ 
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML reader SetProperty failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML reader SetProperty failed"), error);
++        throw utility::details::create_system_error(error);
++    }
+ 
+-        if (FAILED(hr = m_reader->SetInput(pInputStream)))
+-        {
++    if (FAILED(hr = m_reader->SetInput(pInputStream)))
++    {
+ 
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML reader SetInput failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML reader SetInput failed"), error);
++        throw utility::details::create_system_error(error);
++    }
+ #else
+-        concurrency::streams::stringstreambuf buffer;
+-        stream.read_to_end(buffer).get();
+-        m_data = buffer.collection();
+-        if (m_data.empty())
+-            m_reader.reset();
+-        else
+-            m_reader.reset(new xml_text_reader_wrapper(reinterpret_cast<const unsigned char*>(m_data.data()), static_cast<unsigned int>(m_data.size())));
++    concurrency::streams::stringstreambuf buffer;
++    stream.read_to_end(buffer).get();
++    m_data = buffer.collection();
++    if (m_data.empty())
++        m_reader.reset();
++    else
++        m_reader.reset(new xml_text_reader_wrapper(reinterpret_cast<const unsigned char*>(m_data.data()), static_cast<unsigned int>(m_data.size())));
+ #endif
+-    }
++}
+ 
+-    xml_reader::parse_result xml_reader::parse()
++xml_reader::parse_result xml_reader::parse()
++{
++    if (m_streamDone) return xml_reader::parse_result::cannot_continue;
++    // Set this to true each time the parse routine is invoked. Most derived readers will only invoke parse once.
++    m_continueParsing = true;
++
++    // read until there are no more nodes
++#ifdef _USE_XMLLITE
++    HRESULT hr;
++    XmlNodeType nodeType;
++    while (m_continueParsing && S_OK == (hr = m_reader->Read(&nodeType)))
+     {
+-        if (m_streamDone) return xml_reader::parse_result::cannot_continue;
+-        // Set this to true each time the parse routine is invoked. Most derived readers will only invoke parse once.
+-        m_continueParsing = true;
+-
+-        // read until there are no more nodes
+-#ifdef _WIN32
+-        HRESULT hr;
+-        XmlNodeType nodeType;
+-        while (m_continueParsing && S_OK == (hr = m_reader->Read(&nodeType)))
+-        {
+ #else
+-        if (m_reader == nullptr)
+-            return xml_reader::parse_result::cannot_continue; // no XML document to read
++    if (m_reader == nullptr)
++        return xml_reader::parse_result::cannot_continue; // no XML document to read
+ 
+-        while (m_continueParsing && m_reader->read())
+-        {
+-            auto nodeType = m_reader->get_node_type();
++    while (m_continueParsing && m_reader->read())
++    {
++        auto nodeType = m_reader->get_node_type();
+ #endif
+-            switch (nodeType)
+-            {
++        switch (nodeType)
++        {
+ 
+-            case XmlNodeType_Element:
+-            {
+-                auto name = get_current_element_name();
+-                m_elementStack.push_back(name);
+-                handle_begin_element(name);
++        case XmlNodeType_Element:
++        {
++            auto name = get_current_element_name();
++            m_elementStack.push_back(name);
++            handle_begin_element(name);
+ 
+-#ifdef _WIN32
+-                if (m_reader->IsEmptyElement())
++#ifdef _USE_XMLLITE
++            if (m_reader->IsEmptyElement())
+ #else
+-                if (m_reader->is_empty_element())
++            if (m_reader->is_empty_element())
+ #endif
+-                {
+-                    handle_end_element(name);
+-                    m_elementStack.pop_back();
+-                }
+-            }
+-                break;
+-
+-            case XmlNodeType_Text:
+-            case XmlNodeType_Whitespace:
+-                if (m_elementStack.size()) {
+-                    handle_element(m_elementStack.back());
+-                }
+-                break;
+-
+-            case XmlNodeType_EndElement:
+-                handle_end_element(m_elementStack.back());
++            {
++                handle_end_element(name);
+                 m_elementStack.pop_back();
+-                break;
+-
+-            default:
+-                break;
+             }
+         }
++            break;
+ 
+-        xml_reader::parse_result result = xml_reader::parse_result::can_continue;
+-        // If the loop was terminated because there was no more to read from the stream, set m_streamDone to true, so exit early
+-        // the next time parse is invoked.
+-        // if stream is not done, it means that the parsing is interuptted by pause().
+-        // if the element stack is not empty when the stream is done, it means that the xml is not complete.
+-        if (m_continueParsing)
+-        {
+-            m_streamDone = true;
+-            if (m_elementStack.empty())
+-            {
+-                result = xml_reader::parse_result::cannot_continue;
+-            }
+-            else
+-            {
+-                result = xml_reader::parse_result::xml_not_complete;
++        case XmlNodeType_Text:
++        case XmlNodeType_Whitespace:
++            if (m_elementStack.size()) {
++                handle_element(m_elementStack.back());
+             }
++            break;
++
++        case XmlNodeType_EndElement:
++            handle_end_element(m_elementStack.back());
++            m_elementStack.pop_back();
++            break;
++
++        default:
++            break;
+         }
+-        return result;
+     }
+ 
+-    utility::string_t xml_reader::get_parent_element_name(size_t pos)
++    xml_reader::parse_result result = xml_reader::parse_result::can_continue;
++    // If the loop was terminated because there was no more to read from the stream, set m_streamDone to true, so exit early
++    // the next time parse is invoked.
++    // if stream is not done, it means that the parsing is interuptted by pause().
++    // if the element stack is not empty when the stream is done, it means that the xml is not complete.
++    if (m_continueParsing)
+     {
+-        if (m_elementStack.size() > pos + 1)
++        m_streamDone = true;
++        if (m_elementStack.empty())
+         {
+-            size_t currentDepth = m_elementStack.size() - 1;
+-            size_t parentDepth = currentDepth - 1;
+-
+-            if (pos <= parentDepth)
+-            {
+-                return m_elementStack[parentDepth - pos];
+-            }
++            result = xml_reader::parse_result::cannot_continue;
++        }
++        else
++        {
++            result = xml_reader::parse_result::xml_not_complete;
+         }
+-
+-        // return empty string
+-        return utility::string_t();
+     }
++    return result;
++}
+ 
+-    utility::string_t xml_reader::get_current_element_name()
++utility::string_t xml_reader::get_parent_element_name(size_t pos)
++{
++    if (m_elementStack.size() > pos + 1)
+     {
+-#ifdef _WIN32
+-        HRESULT hr;
+-        const wchar_t * pwszLocalName = NULL;
++        size_t currentDepth = m_elementStack.size() - 1;
++        size_t parentDepth = currentDepth - 1;
+ 
+-        if (FAILED(hr = m_reader->GetLocalName(&pwszLocalName, NULL)))
++        if (pos <= parentDepth)
+         {
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML reader GetLocalName failed"), error);
+-            throw utility::details::create_system_error(error);
++            return m_elementStack[parentDepth - pos];
+         }
+-        return utility::string_t(pwszLocalName);
+-#else
+-        return utility::string_t(m_reader->get_local_name());
+-#endif
+     }
+ 
+-    utility::string_t xml_reader::get_current_element_name_with_prefix()
+-    {
+-#ifdef _WIN32
+-        HRESULT hr;
+-        const wchar_t * pwszName = NULL;
++    // return empty string
++    return utility::string_t();
++}
+ 
+-        if (FAILED(hr = m_reader->GetQualifiedName(&pwszName, NULL)))
+-        {
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML reader GetQualified failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
+-        return utility::string_t(pwszName);
++utility::string_t xml_reader::get_current_element_name()
++{
++#ifdef _USE_XMLLITE
++    HRESULT hr;
++    const wchar_t * pwszLocalName = NULL;
++
++    if (FAILED(hr = m_reader->GetLocalName(&pwszLocalName, NULL)))
++    {
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML reader GetLocalName failed"), error);
++        throw utility::details::create_system_error(error);
++    }
++    return utility::string_t(pwszLocalName);
+ #else
+-        throw std::runtime_error("Not implemented");
++    return utility::string_t(m_reader->get_local_name());
+ #endif
+-    }
++}
++
++utility::string_t xml_reader::get_current_element_name_with_prefix()
++{
++#ifdef _USE_XMLLITE
++    HRESULT hr;
++    const wchar_t * pwszName = NULL;
+ 
+-    utility::string_t xml_reader::get_current_element_text()
++    if (FAILED(hr = m_reader->GetQualifiedName(&pwszName, NULL)))
+     {
+-#ifdef _WIN32
+-        HRESULT hr;
+-        const wchar_t * pwszValue;
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML reader GetQualified failed"), error);
++        throw utility::details::create_system_error(error);
++    }
++    return utility::string_t(pwszName);
++#else
++    throw std::runtime_error("Not implemented");
++#endif
++}
+ 
+-        if (FAILED(hr = m_reader->GetValue(&pwszValue, NULL)))
+-        {
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML reader GetValue failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
++utility::string_t xml_reader::get_current_element_text()
++{
++#ifdef _USE_XMLLITE
++    HRESULT hr;
++    const wchar_t * pwszValue;
+ 
+-        return utility::string_t(pwszValue);
++    if (FAILED(hr = m_reader->GetValue(&pwszValue, NULL)))
++    {
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML reader GetValue failed"), error);
++        throw utility::details::create_system_error(error);
++    }
++
++    return utility::string_t(pwszValue);
+ #else
+-        return utility::string_t(m_reader->get_value());
++    return utility::string_t(m_reader->get_value());
+ #endif
+-    }
++}
+ 
+-    bool xml_reader::move_to_first_attribute()
++bool xml_reader::move_to_first_attribute()
++{
++#ifdef _USE_XMLLITE
++    HRESULT hr;
++    if (FAILED(hr = m_reader->MoveToFirstAttribute()))
+     {
+-#ifdef _WIN32
+-        HRESULT hr;
+-        if (FAILED(hr = m_reader->MoveToFirstAttribute()))
+-        {
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML reader MoveToFirstAttribute failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
+-        return (hr == S_OK);
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML reader MoveToFirstAttribute failed"), error);
++        throw utility::details::create_system_error(error);
++    }
++    return (hr == S_OK);
+ #else
+-        return m_reader->move_to_first_attribute();
++    return m_reader->move_to_first_attribute();
+ #endif
+-    }
++}
+ 
+-    bool xml_reader::move_to_next_attribute()
++bool xml_reader::move_to_next_attribute()
++{
++#ifdef _USE_XMLLITE
++    HRESULT hr;
++    if (FAILED(hr = m_reader->MoveToNextAttribute()))
+     {
+-#ifdef _WIN32
+-        HRESULT hr;
+-        if (FAILED(hr = m_reader->MoveToNextAttribute()))
+-        {
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML reader MoveToNextAttribute failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
+-        return (hr == S_OK);
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML reader MoveToNextAttribute failed"), error);
++        throw utility::details::create_system_error(error);
++    }
++    return (hr == S_OK);
+ #else
+-        return m_reader->move_to_next_attribute();
++    return m_reader->move_to_next_attribute();
+ #endif
+-    }
++}
+ 
+-    void xml_writer::initialize(std::ostream& stream)
+-    {
+-#ifdef _WIN32
+-        HRESULT hr;
+-        CComPtr<IStream> pStream;
+-        pStream.Attach(xmlstring_ostream::create(stream));
++void xml_writer::initialize(std::ostream& stream)
++{
++#ifdef _USE_XMLLITE
++    HRESULT hr;
++    CComPtr<IStream> pStream;
++    pStream.Attach(xmlstring_ostream::create(stream));
+ 
+-        if (pStream == nullptr)
+-        {
+-            auto error = ERROR_NOT_ENOUGH_MEMORY;
+-            log_error_message(_XPLATSTR("XML writer IStream creation failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
++    if (pStream == nullptr)
++    {
++        auto error = ERROR_NOT_ENOUGH_MEMORY;
++        log_error_message(_XPLATSTR("XML writer IStream creation failed"), error);
++        throw utility::details::create_system_error(error);
++    }
+ 
+-        if (FAILED(hr = CreateXmlWriter(__uuidof(IXmlWriter), (void**)&m_writer, NULL)))
+-        {
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML writer CreateXmlWriter failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
++    if (FAILED(hr = CreateXmlWriter(__uuidof(IXmlWriter), (void**)&m_writer, NULL)))
++    {
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML writer CreateXmlWriter failed"), error);
++        throw utility::details::create_system_error(error);
++    }
+ 
+-        if (FAILED(hr = m_writer->SetOutput(pStream)))
+-        {
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML writer SetOutput failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
++    if (FAILED(hr = m_writer->SetOutput(pStream)))
++    {
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML writer SetOutput failed"), error);
++        throw utility::details::create_system_error(error);
++    }
+ 
+-        if (FAILED(hr = m_writer->SetProperty(XmlWriterProperty_Indent, TRUE)))
+-        {
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML writer SetProperty failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
++    if (FAILED(hr = m_writer->SetProperty(XmlWriterProperty_Indent, TRUE)))
++    {
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML writer SetProperty failed"), error);
++        throw utility::details::create_system_error(error);
++    }
+ 
+-        if (FAILED(hr = m_writer->WriteStartDocument(XmlStandalone_Omit)))
+-        {
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML writer WriteStartDocument failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
++    if (FAILED(hr = m_writer->WriteStartDocument(XmlStandalone_Omit)))
++    {
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML writer WriteStartDocument failed"), error);
++        throw utility::details::create_system_error(error);
++    }
+ #else // LINUX
+-        m_document.reset(new xml_document_wrapper());
+-        m_elementStack = std::stack<xml_element_wrapper*>();
+-        m_stream = &stream;
++    m_document.reset(new xml_document_wrapper());
++    m_elementStack = std::stack<xml_element_wrapper*>();
++    m_stream = &stream;
+ #endif
+-    }
++}
+ 
+-    void xml_writer::finalize()
+-    {
+-#ifdef _WIN32
+-        HRESULT hr;
++void xml_writer::finalize()
++{
++#ifdef _USE_XMLLITE
++    HRESULT hr;
+ 
+-        if (FAILED(hr = m_writer->WriteEndDocument()))
+-        {
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML writer WriteEndDocument failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
+-        if (FAILED(hr = m_writer->Flush()))
+-        {
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML writer Flush failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
++    if (FAILED(hr = m_writer->WriteEndDocument()))
++    {
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML writer WriteEndDocument failed"), error);
++        throw utility::details::create_system_error(error);
++    }
++    if (FAILED(hr = m_writer->Flush()))
++    {
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML writer Flush failed"), error);
++        throw utility::details::create_system_error(error);
++    }
+ #else // LINUX
+-        auto result = m_document->write_to_string();
+-        if (m_stream != nullptr)
+-            *m_stream << reinterpret_cast<const char *>(result.c_str());
++    auto result = m_document->write_to_string();
++    if (m_stream != nullptr)
++        *m_stream << reinterpret_cast<const char *>(result.c_str());
+ 
+ #endif
+-    }
++}
+ 
+-    void xml_writer::write_start_element_with_prefix(const utility::string_t& elementPrefix, const utility::string_t& elementName, const utility::string_t& namespaceName)
++void xml_writer::write_start_element_with_prefix(const utility::string_t& elementPrefix, const utility::string_t& elementName, const utility::string_t& namespaceName)
++{
++#ifdef _USE_XMLLITE
++    HRESULT hr;
++    if (FAILED(hr = m_writer->WriteStartElement(elementPrefix.c_str(), elementName.c_str(), namespaceName.empty() ? NULL : namespaceName.c_str())))
+     {
+-#ifdef _WIN32
+-        HRESULT hr;
+-        if (FAILED(hr = m_writer->WriteStartElement(elementPrefix.c_str(), elementName.c_str(), namespaceName.empty() ? NULL : namespaceName.c_str())))
+-        {
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML writer WriteStartElement with prefix failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML writer WriteStartElement with prefix failed"), error);
++        throw utility::details::create_system_error(error);
++    }
+ #else 
+-        if (m_elementStack.empty())
+-        {
+-            m_elementStack.push(m_document->create_root_node(elementName, namespaceName, elementPrefix));
+-        }
+-        else
++    if (m_elementStack.empty())
++    {
++        m_elementStack.push(m_document->create_root_node(elementName, namespaceName, elementPrefix));
++    }
++    else
++    {
++        m_elementStack.push(m_elementStack.top()->add_child(elementName, elementPrefix));
++        if (!namespaceName.empty())
+         {
+-            m_elementStack.push(m_elementStack.top()->add_child(elementName, elementPrefix));
+-            if (!namespaceName.empty())
+-            {
+-                m_elementStack.top()->set_namespace_declaration(namespaceName, elementPrefix);
+-            }
++            m_elementStack.top()->set_namespace_declaration(namespaceName, elementPrefix);
+         }
+-#endif
+     }
++#endif
++}
+ 
+-    void xml_writer::write_start_element(const utility::string_t& elementName, const utility::string_t& namespaceName)
+-    {
+-#ifdef _WIN32
+-        HRESULT hr;
++void xml_writer::write_start_element(const utility::string_t& elementName, const utility::string_t& namespaceName)
++{
++#ifdef _USE_XMLLITE
++    HRESULT hr;
+ 
+-        if (FAILED(hr = m_writer->WriteStartElement(NULL, elementName.c_str(), namespaceName.empty() ? NULL : namespaceName.c_str())))
+-        {
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML writer WriteStartElement failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
++    if (FAILED(hr = m_writer->WriteStartElement(NULL, elementName.c_str(), namespaceName.empty() ? NULL : namespaceName.c_str())))
++    {
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML writer WriteStartElement failed"), error);
++        throw utility::details::create_system_error(error);
++    }
+ #else 
+-        write_start_element_with_prefix(_XPLATSTR(""), elementName, namespaceName);
++    write_start_element_with_prefix(_XPLATSTR(""), elementName, namespaceName);
+ #endif
+-    }
++}
+ 
+-    void xml_writer::write_end_element()
+-    {
+-#ifdef _WIN32
+-        HRESULT hr;
++void xml_writer::write_end_element()
++{
++#ifdef _USE_XMLLITE
++    HRESULT hr;
+ 
+-        if (FAILED(hr = m_writer->WriteEndElement()))
+-        {
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML writer WriteEndElement failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
++    if (FAILED(hr = m_writer->WriteEndElement()))
++    {
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML writer WriteEndElement failed"), error);
++        throw utility::details::create_system_error(error);
++    }
+ #else 
+-        m_elementStack.pop();
++    m_elementStack.pop();
+ #endif
+-    }
++}
+ 
+-    void xml_writer::write_full_end_element()
+-    {
+-#ifdef _WIN32
+-        HRESULT hr;
++void xml_writer::write_full_end_element()
++{
++#ifdef _USE_XMLLITE
++    HRESULT hr;
+ 
+-        if (FAILED(hr = m_writer->WriteFullEndElement()))
+-        {
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML writer WriteFullEndElement failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
++    if (FAILED(hr = m_writer->WriteFullEndElement()))
++    {
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML writer WriteFullEndElement failed"), error);
++        throw utility::details::create_system_error(error);
++    }
+ #else
+-        throw std::runtime_error("Not implemented");
++    throw std::runtime_error("Not implemented");
+ #endif
+-    }
++}
+ 
+-    void xml_writer::write_string(const utility::string_t& str)
+-    {
+-#ifdef _WIN32
+-        HRESULT hr;
++void xml_writer::write_string(const utility::string_t& str)
++{
++#ifdef _USE_XMLLITE
++    HRESULT hr;
+ 
+-        if (FAILED(hr = m_writer->WriteString(str.c_str())))
+-        {
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML writer WriteString failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
++    if (FAILED(hr = m_writer->WriteString(str.c_str())))
++    {
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML writer WriteString failed"), error);
++        throw utility::details::create_system_error(error);
++    }
+ #else
+-        UNREFERENCED_PARAMETER(str);
+-        throw std::runtime_error("Not implemented");
++    UNREFERENCED_PARAMETER(str);
++    throw std::runtime_error("Not implemented");
+ #endif
+-    }
++}
+ 
+ 
+-    void xml_writer::write_attribute_string(const utility::string_t& prefix, const utility::string_t& name, const utility::string_t& namespaceUri, const utility::string_t& value)
+-    {
+-#ifdef _WIN32
+-        HRESULT hr;
++void xml_writer::write_attribute_string(const utility::string_t& prefix, const utility::string_t& name, const utility::string_t& namespaceUri, const utility::string_t& value)
++{
++#ifdef _USE_XMLLITE
++    HRESULT hr;
+ 
+-        if (FAILED(hr = m_writer->WriteAttributeString(prefix.empty() ? NULL : prefix.c_str(),
+-            name.empty() ? NULL : name.c_str(),
+-            namespaceUri.empty() ? NULL : namespaceUri.c_str(),
+-            value.empty() ? NULL : value.c_str())))
+-        {
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML writer WriteAttributeString failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
++    if (FAILED(hr = m_writer->WriteAttributeString(prefix.empty() ? NULL : prefix.c_str(),
++        name.empty() ? NULL : name.c_str(),
++        namespaceUri.empty() ? NULL : namespaceUri.c_str(),
++        value.empty() ? NULL : value.c_str())))
++    {
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML writer WriteAttributeString failed"), error);
++        throw utility::details::create_system_error(error);
++    }
+ #else
+-        UNREFERENCED_PARAMETER(namespaceUri);
+-        if (prefix == _XPLATSTR("xmlns"))
+-        {
+-            m_elementStack.top()->set_namespace_declaration(
+-                value, name
+-                );
+-        }
+-        else
+-        {
+-            m_elementStack.top()->set_attribute(
+-                name,
+-                value,
+-                prefix);
+-        }
+-#endif
++    UNREFERENCED_PARAMETER(namespaceUri);
++    if (prefix == _XPLATSTR("xmlns"))
++    {
++        m_elementStack.top()->set_namespace_declaration(
++            value, name
++            );
+     }
+-
+-    void xml_writer::write_element(const utility::string_t& elementName, const utility::string_t& value)
++    else
+     {
+-#ifdef _WIN32
+-        HRESULT hr;
++        m_elementStack.top()->set_attribute(
++            name,
++            value,
++            prefix);
++    }
++#endif
++}
+ 
+-        if (FAILED(hr = m_writer->WriteElementString(NULL, elementName.c_str(), NULL, value.c_str())))
+-        {
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML writer WriteElementString failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
++void xml_writer::write_element(const utility::string_t& elementName, const utility::string_t& value)
++{
++#ifdef _USE_XMLLITE
++    HRESULT hr;
++
++    if (FAILED(hr = m_writer->WriteElementString(NULL, elementName.c_str(), NULL, value.c_str())))
++    {
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML writer WriteElementString failed"), error);
++        throw utility::details::create_system_error(error);
++    }
+ #else // LINUX
+-        write_element_with_prefix(_XPLATSTR(""), elementName, value);
++    write_element_with_prefix(_XPLATSTR(""), elementName, value);
+ #endif
+-    }
++}
+ 
+-    void xml_writer::write_element_with_prefix(const utility::string_t& prefix, const utility::string_t& elementName, const utility::string_t& value)
+-    {
+-#ifdef _WIN32
+-        HRESULT hr;
++void xml_writer::write_element_with_prefix(const utility::string_t& prefix, const utility::string_t& elementName, const utility::string_t& value)
++{
++#ifdef _USE_XMLLITE
++    HRESULT hr;
+ 
+-        if (FAILED(hr = m_writer->WriteElementString(prefix.c_str(), elementName.c_str(), NULL, value.c_str())))
+-        {
+-            auto error = GetLastError();
+-            log_error_message(_XPLATSTR("XML writer WriteElementStringWithPrefix failed"), error);
+-            throw utility::details::create_system_error(error);
+-        }
++    if (FAILED(hr = m_writer->WriteElementString(prefix.c_str(), elementName.c_str(), NULL, value.c_str())))
++    {
++        auto error = GetLastError();
++        log_error_message(_XPLATSTR("XML writer WriteElementStringWithPrefix failed"), error);
++        throw utility::details::create_system_error(error);
++    }
+ #else
+-        write_start_element_with_prefix(prefix, elementName);
+-        m_elementStack.top()->set_child_text(value);
+-        write_end_element();
++    write_start_element_with_prefix(prefix, elementName);
++    m_elementStack.top()->set_child_text(value);
++    write_end_element();
+ #endif
+-    }
++}
+ 
+ }
+-        }
+-    }
++}
++}
+ } // namespace azure::storage::core::xml

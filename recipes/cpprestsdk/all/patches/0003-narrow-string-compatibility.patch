@@ -1,0 +1,883 @@
+Index: Release/include/cpprest/asyncrt_utils.h
+===================================================================
+--- Release/include/cpprest/asyncrt_utils.h	(revision 183249)
++++ Release/include/cpprest/asyncrt_utils.h	(working copy)
+@@ -179,6 +179,20 @@
+ _ASYNCRTIMP std::string __cdecl to_utf8string(const utf16string& value);
+ 
+ /// <summary>
++/// Converts to a std::wstring from std::string.
++/// </summary>
++/// <param name="value">A std:::string.</param>
++/// <returns>A std:::wstring.</returns>
++_ASYNCRTIMP std::wstring __cdecl to_wstring(const std::string& value);
++
++/// <summary>
++/// Converts to a std::string from std::swtring.
++/// </summary>
++/// <param name="value">A std:::wstring.</param>
++/// <returns>>A std::string.</returns>
++_ASYNCRTIMP std::string __cdecl to_string(const std::wstring& in);
++
++/// <summary>
+ /// Encode the given byte array into a base64 string
+ /// </summary>
+ _ASYNCRTIMP utility::string_t __cdecl to_base64(const std::vector<unsigned char>& data);
+Index: Release/include/cpprest/details/basic_types.h
+===================================================================
+--- Release/include/cpprest/details/basic_types.h	(revision 183249)
++++ Release/include/cpprest/details/basic_types.h	(working copy)
+@@ -33,7 +33,7 @@
+ namespace utility
+ {
+ #ifdef _WIN32
+-#define _UTF16_STRINGS
++//#define _UTF16_STRINGS
+ #endif
+ 
+ // We should be using a 64-bit size type for most situations that do
+Index: Release/include/cpprest/details/web_utilities.h
+===================================================================
+--- Release/include/cpprest/details/web_utilities.h	(revision 183249)
++++ Release/include/cpprest/details/web_utilities.h	(working copy)
+@@ -31,7 +31,7 @@
+ {
+ public:
+     winrt_encryption() = default;
+-    _ASYNCRTIMP winrt_encryption(const std::wstring& data);
++    _ASYNCRTIMP winrt_encryption(const ::utility::string_t& data);
+     _ASYNCRTIMP plaintext_string decrypt() const;
+ 
+ private:
+@@ -42,7 +42,7 @@
+ {
+ public:
+     win32_encryption() = default;
+-    _ASYNCRTIMP win32_encryption(const std::wstring& data);
++    _ASYNCRTIMP win32_encryption(const ::utility::string_t& data);
+     _ASYNCRTIMP ~win32_encryption();
+     _ASYNCRTIMP plaintext_string decrypt() const;
+ 
+Index: Release/include/cpprest/http_msg.h
+===================================================================
+--- Release/include/cpprest/http_msg.h	(revision 183249)
++++ Release/include/cpprest/http_msg.h	(working copy)
+@@ -196,7 +196,7 @@
+     /// <param name="whatArg">Error message string.</param>
+     http_exception(const utility::string_t& whatArg) : m_msg(utility::conversions::to_utf8string(whatArg)) {}
+ 
+-#ifdef _WIN32
++#if defined(_UTF16_STRINGS)
+     /// <summary>
+     /// Creates an <c>http_exception</c> with just a string message and no error code.
+     /// </summary>
+@@ -225,8 +225,8 @@
+     {
+     }
+ 
+-#ifdef _WIN32
+-    /// <summary>
++#if defined(_UTF16_STRINGS)
++	/// <summary>
+     /// Creates an <c>http_exception</c> with from a error code using the current platform error category.
+     /// </summary>
+     /// <param name="errorCode">Error code value.</param>
+@@ -258,8 +258,8 @@
+     {
+     }
+ 
+-#ifdef _WIN32
+-    /// <summary>
++#if defined(_UTF16_STRINGS)
++	/// <summary>
+     /// Creates an <c>http_exception</c> with from a error code with a category, and a string message.
+     /// </summary>
+     /// <param name="errorCode">Error code value.</param>
+Index: Release/include/cpprest/json.h
+===================================================================
+--- Release/include/cpprest/json.h	(revision 183249)
++++ Release/include/cpprest/json.h	(working copy)
+@@ -275,7 +275,7 @@
+     /// </remarks>
+     static _ASYNCRTIMP value __cdecl string(utility::string_t value, bool has_escape_chars);
+ 
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+ private:
+     // Only used internally by JSON parser.
+     static _ASYNCRTIMP value __cdecl string(const std::string& value);
+@@ -403,7 +403,7 @@
+     /// <returns>The parsed object. Returns web::json::value::null if failed</returns>
+     _ASYNCRTIMP static value __cdecl parse(const utility::string_t& value, std::error_code& errorCode);
+ 
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+     /// <summary>
+     /// Parses a string and construct a JSON value.
+     /// </summary>
+@@ -456,7 +456,7 @@
+     /// <param name="stream">The stream that the JSON string representation should be written to.</param>
+     _ASYNCRTIMP void serialize(utility::ostream_t& stream) const;
+ 
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+     /// <summary>
+     /// Parses a JSON value from the contents of a single-byte (UTF8) stream.
+     /// </summary>
+@@ -663,7 +663,7 @@
+     /// <returns>A reference to the value kept in the field.</returns>
+     _ASYNCRTIMP value& operator[](const utility::string_t& key);
+ 
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+ private:
+     // Only used internally by JSON parser
+     _ASYNCRTIMP value& operator[](const std::string& key)
+@@ -697,7 +697,7 @@
+     template<typename CharType>
+     friend class web::json::details::JSON_Parser;
+ 
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+     /// <summary>
+     /// Writes the current JSON value as a double-byte string to a string instance.
+     /// </summary>
+@@ -1386,7 +1386,7 @@
+ 
+     // Common function used for serialization to strings and streams.
+     virtual void serialize_impl(std::string& str) const { format(str); }
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+     virtual void serialize_impl(std::wstring& str) const { format(str); }
+ #endif
+ 
+@@ -1420,7 +1420,7 @@
+     _Value() {}
+ 
+     virtual void format(std::basic_string<char>& stream) const { stream.append("null"); }
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+     virtual void format(std::basic_string<wchar_t>& stream) const { stream.append(L"null"); }
+ #endif
+ private:
+@@ -1458,7 +1458,7 @@
+ 
+ protected:
+     virtual void format(std::basic_string<char>& stream) const;
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+     virtual void format(std::basic_string<wchar_t>& stream) const;
+ #endif
+ private:
+@@ -1482,7 +1482,7 @@
+ protected:
+     virtual void format(std::basic_string<char>& stream) const { stream.append(m_value ? "true" : "false"); }
+ 
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+     virtual void format(std::basic_string<wchar_t>& stream) const { stream.append(m_value ? L"true" : L"false"); }
+ #endif
+ private:
+@@ -1499,7 +1499,7 @@
+     {
+     }
+ 
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+     _String(std::string&& value) : m_string(utility::conversions::to_utf16string(std::move(value)))
+     {
+         m_has_escape_char = has_escape_chars(*this);
+@@ -1517,13 +1517,13 @@
+     virtual const utility::string_t& as_string() const;
+ 
+     virtual void serialize_impl(std::string& str) const { serialize_impl_char_type(str); }
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+     virtual void serialize_impl(std::wstring& str) const { serialize_impl_char_type(str); }
+ #endif
+ 
+ protected:
+     virtual void format(std::basic_string<char>& str) const;
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+     virtual void format(std::basic_string<wchar_t>& str) const;
+ #endif
+ 
+@@ -1558,7 +1558,7 @@
+ 
+ void format_string(const utility::string_t& key, utility::string_t& str);
+ 
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+ void format_string(const utility::string_t& key, std::string& str);
+ #endif
+ 
+@@ -1593,7 +1593,7 @@
+         str.reserve(get_reserve_size());
+         format(str);
+     }
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+     virtual void serialize_impl(std::wstring& str) const
+     {
+         // To avoid repeated allocations reserve some space all up front.
+@@ -1605,7 +1605,7 @@
+ 
+ protected:
+     virtual void format(std::basic_string<char>& str) const { format_impl(str); }
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+     virtual void format(std::basic_string<wchar_t>& str) const { format_impl(str); }
+ #endif
+ 
+@@ -1702,7 +1702,7 @@
+         str.reserve(get_reserve_size());
+         format(str);
+     }
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+     virtual void serialize_impl(std::wstring& str) const
+     {
+         // To avoid repeated allocations reserve some space all up front.
+@@ -1714,7 +1714,7 @@
+ 
+ protected:
+     virtual void format(std::basic_string<char>& str) const { format_impl(str); }
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+     virtual void format(std::basic_string<wchar_t>& str) const { format_impl(str); }
+ #endif
+ private:
+Index: Release/include/cpprest/ws_client.h
+===================================================================
+--- Release/include/cpprest/ws_client.h	(revision 183249)
++++ Release/include/cpprest/ws_client.h	(working copy)
+@@ -221,14 +221,11 @@
+     /// Creates an <c>websocket_exception</c> with just a string message and no error code.
+     /// </summary>
+     /// <param name="whatArg">Error message string.</param>
++#ifdef _UTF16_STRINGS
+     websocket_exception(const utility::string_t& whatArg) : m_msg(utility::conversions::to_utf8string(whatArg)) {}
+-
+-#ifdef _WIN32
+-    /// <summary>
+-    /// Creates an <c>websocket_exception</c> with just a string message and no error code.
+-    /// </summary>
+-    /// <param name="whatArg">Error message string.</param>
+-    websocket_exception(std::string whatArg) : m_msg(std::move(whatArg)) {}
++    websocket_exception(std::string whatArg) : m_msg(std::move(whatArg)) { }
++#else
++    websocket_exception(const utility::string_t& whatArg) : m_msg(std::move(whatArg)) { }
+ #endif
+ 
+     /// <summary>
+@@ -252,7 +249,7 @@
+     {
+     }
+ 
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+     /// <summary>
+     /// Creates a <c>websocket_exception</c> from a error code and string message.
+     /// </summary>
+Index: Release/src/http/client/http_client.cpp
+===================================================================
+--- Release/src/http/client/http_client.cpp	(revision 183249)
++++ Release/src/http/client/http_client.cpp	(working copy)
+@@ -67,7 +67,7 @@
+     report_exception(http_exception(static_cast<int>(error_code), errorMessage));
+ }
+ 
+-#if defined(_WIN32)
++#if defined(_UTF16_STRINGS)
+ void request_context::report_error(unsigned long error_code, const std::wstring& errorMessage)
+ {
+     report_exception(http_exception(static_cast<int>(error_code), errorMessage));
+Index: Release/src/http/client/http_client_winhttp.cpp
+===================================================================
+--- Release/src/http/client/http_client_winhttp.cpp	(revision 183249)
++++ Release/src/http/client/http_client_winhttp.cpp	(working copy)
+@@ -629,6 +629,9 @@
+             return;
+         }
+ 
++#ifndef _UTF16_STRINGS
++        std::wstring customCnCheck = utility::conversions::to_wstring(m_customCnCheck);
++#endif
+         HTTPSPolicyCallbackData policyData = {
+             {sizeof(policyData)},
+             AUTHTYPE_SERVER,
+@@ -637,7 +640,11 @@
+                 | 0x00000100 /* SECURITY_FLAG_IGNORE_UNKNOWN_CA */
+                 | 0x00000200 /* SECURITY_FLAG_IGNORE_WRONG_USAGE */
+                 | 0x00002000 /* SECURITY_FLAG_IGNORE_CERT_DATE_INVALID */,
++#ifdef _UTF16_STRINGS
+             &m_customCnCheck[0],
++#else
++            &customCnCheck[0],
++#endif
+         };
+         CERT_CHAIN_POLICY_PARA policyPara = {sizeof(policyPara)};
+         policyPara.pvExtraPolicyPara = &policyData;
+@@ -847,7 +854,11 @@
+                         else if (proxyIE.lpszAutoConfigUrl)
+                         {
+                             m_proxy_auto_config = true;
++#ifdef _UTF16_STRINGS
+                             m_proxy_auto_config_url = proxyIE.lpszAutoConfigUrl;
++#else
++                            m_proxy_auto_config_url = utility::conversions::to_string(proxyIE.lpszAutoConfigUrl);
++#endif
+                         }
+                         else if (proxyIE.lpszProxy)
+                         {
+@@ -873,7 +884,12 @@
+             uri = config.proxy().address();
+             if (uri.is_port_default())
+             {
++#ifdef _UTF16_STRINGS
+                 proxy_name = uri.host().c_str();
++#else
++                std::wstring whost = utility::conversions::to_wstring(uri.host());
++                proxy_name = whost.c_str();
++#endif
+             }
+             else
+             {
+@@ -884,7 +900,12 @@
+                     proxy_str.append(::utility::conversions::details::to_string_t(uri.port()));
+                 }
+ 
++#ifdef _UTF16_STRINGS
+                 proxy_name = proxy_str.c_str();
++#else
++                std::wstring wproxy_str = utility::conversions::to_wstring(proxy_str);
++                proxy_name = wproxy_str.c_str();
++#endif
+             }
+         }
+ 
+@@ -947,7 +968,13 @@
+         unsigned int port = m_uri.is_port_default()
+                                 ? (m_secure ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT)
+                                 : m_uri.port();
++
++#ifdef _UTF16_STRINGS
+         m_hConnection = WinHttpConnect(m_hSession, m_uri.host().c_str(), (INTERNET_PORT)port, 0);
++#else
++        std::wstring whost = utility::conversions::to_wstring(m_uri.host());
++        m_hConnection = WinHttpConnect(m_hSession, whost.c_str(), (INTERNET_PORT)port, 0);
++#endif
+ 
+         if (m_hConnection == nullptr)
+         {
+@@ -1003,12 +1030,23 @@
+             else
+             {
+                 autoproxy_options.dwFlags = WINHTTP_AUTOPROXY_CONFIG_URL;
++
++
++#ifdef _UTF16_STRINGS
+                 autoproxy_options.lpszAutoConfigUrl = m_proxy_auto_config_url.c_str();
++#else
++                std::wstring wproxy_auto_config_url = utility::conversions::to_wstring(m_proxy_auto_config_url);
++                autoproxy_options.lpszAutoConfigUrl = wproxy_auto_config_url.c_str();
++#endif
+             }
+ 
+             autoproxy_options.fAutoLogonIfChallenged = TRUE;
+-
++#ifdef _UTF16_STRINGS
+             auto result = WinHttpGetProxyForUrl(m_hSession, m_uri.to_string().c_str(), &autoproxy_options, &info);
++ #else
++            std::wstring wuri = utility::conversions::to_wstring(m_uri.to_string());
++            auto result = WinHttpGetProxyForUrl(m_hSession, wuri.c_str(), &autoproxy_options, &info);
++ #endif
+             if (result)
+             {
+                 proxy_info_required = true;
+@@ -1027,10 +1065,20 @@
+         // Open the request.
+         winhttp_context->m_request_handle_context = new std::weak_ptr<winhttp_request_context>(winhttp_context);
+ 
++#ifndef _UTF16_STRINGS
++        std::wstring wmethod = utility::conversions::to_wstring(msg.method());
++        std::wstring wencoded_resource = utility::conversions::to_wstring(encoded_resource);
++#endif
++
+         winhttp_context->m_request_handle =
+             WinHttpOpenRequest(m_hConnection,
++#ifdef _UTF16_STRINGS
+                                msg.method().c_str(),
+                                encoded_resource.c_str(),
++#else
++                               wmethod.c_str(),
++                               wencoded_resource.c_str(),
++#endif
+                                nullptr,
+                                WINHTTP_NO_REFERER,
+                                WINHTTP_DEFAULT_ACCEPT_TYPES,
+@@ -1235,8 +1283,16 @@
+         // Add headers.
+         if (!flattened_headers.empty())
+         {
++#ifndef _UTF16_STRINGS
++            std::wstring wflattened_headers = utility::conversions::to_wstring(flattened_headers);
++#endif
++
+             if (!WinHttpAddRequestHeaders(winhttp_context->m_request_handle,
++#ifdef _UTF16_STRINGS
+                                           flattened_headers.c_str(),
++#else
++                                          wflattened_headers.c_str(),
++#endif
+                                           static_cast<DWORD>(flattened_headers.length()),
+                                           WINHTTP_ADDREQ_FLAG_ADD))
+             {
+@@ -1890,11 +1946,22 @@
+             // New scope to ensure plaintext password is cleared as soon as possible.
+             {
+                 auto password = cred._internal_decrypt();
++
++#ifndef _UTF16_STRINGS
++                std::wstring wpassword = utility::conversions::to_wstring(*password);
++                std::wstring wcred_username = utility::conversions::to_wstring(cred.username());
++#endif
++
+                 if (!WinHttpSetCredentials(hRequestHandle,
+                                            dwAuthTarget,
+                                            dwSelectedScheme,
++#ifdef _UTF16_STRINGS
+                                            cred.username().c_str(),
+                                            password->c_str(),
++#else
++                                           wcred_username.c_str(),
++                                           wpassword.c_str(),
++#endif
+                                            nullptr))
+                 {
+                     return false;
+Index: Release/src/http/client/x509_cert_utilities.cpp
+===================================================================
+--- Release/src/http/client/x509_cert_utilities.cpp	(revision 183249)
++++ Release/src/http/client/x509_cert_utilities.cpp	(working copy)
+@@ -421,7 +421,11 @@
+         return false;
+     }
+ 
++#ifdef _UTF16_STRINGS
+     auto u16HostName = utility::conversions::to_utf16string(hostname);
++#else
++    auto u16HostName = utility::conversions::to_wstring(hostname);
++#endif
+     HTTPSPolicyCallbackData policyData = {
+         {sizeof(policyData)},
+         AUTHTYPE_SERVER,
+Index: Release/src/http/listener/http_server_httpsys.cpp
+===================================================================
+--- Release/src/http/listener/http_server_httpsys.cpp	(revision 183249)
++++ Release/src/http/listener/http_server_httpsys.cpp	(working copy)
+@@ -23,6 +23,7 @@
+ 
+ #include "http_server_httpsys.h"
+ #include "http_server_impl.h"
++#include <locale>
+ 
+ using namespace web;
+ using namespace utility;
+@@ -110,7 +111,11 @@
+         case HttpVerbOPTIONS: method = methods::OPTIONS; break;
+         case HttpVerbTRACE: method = methods::TRCE; break;
+         case HttpVerbCONNECT: method = methods::CONNECT; break;
++#ifdef _UTF16_STRINGS
+         case HttpVerbUnknown: char_to_wstring(method, p_request->pUnknownVerb); break;
++#else
++        case HttpVerbUnknown: method = p_request->pUnknownVerb; break;
++#endif
+         case HttpVerbMOVE: method = _XPLATSTR("MOVE"); break;
+         case HttpVerbCOPY: method = _XPLATSTR("COPY"); break;
+         case HttpVerbPROPFIND: method = _XPLATSTR("PROPFIND"); break;
+@@ -135,14 +140,23 @@
+     //      http_header class itself.
+     for (USHORT i = 0; i < headers.UnknownHeaderCount; ++i)
+     {
++#ifdef _UTF16_STRINGS
+         utf16string unknown_header_name;
+         char_to_wstring(unknown_header_name, headers.pUnknownHeaders[i].pName);
++#else
++        std::string unknown_header_name;
++        unknown_header_name = headers.pUnknownHeaders[i].pName;
++#endif
+ 
+         // header value can be empty
+         if (headers.pUnknownHeaders[i].RawValueLength > 0)
+         {
++#ifdef _UTF16_STRINGS
+             msgHeaders.add(unknown_header_name,
+                            utility::conversions::to_utf16string(headers.pUnknownHeaders[i].pRawValue));
++#else
++            msgHeaders.add(unknown_header_name, headers.pUnknownHeaders[i].pRawValue);
++#endif
+         }
+         else
+         {
+@@ -153,8 +167,12 @@
+     {
+         if (headers.KnownHeaders[i].RawValueLength > 0)
+         {
++#ifdef _UTF16_STRINGS
+             msgHeaders.add(HttpServerAPIRequestKnownHeaders[i],
+                            utility::conversions::to_utf16string(headers.KnownHeaders[i].pRawValue));
++#else
++            msgHeaders.add(HttpServerAPIRequestKnownHeaders[i], headers.KnownHeaders[i].pRawValue);
++#endif
+         }
+     }
+ }
+@@ -202,7 +220,18 @@
+ 
+     // inside here we check for a few specific error types that know about
+     // there may be more possibilities for windows to return a different error
+-    errorCode = HttpAddUrlToUrlGroup(urlGroupId, host_uri.c_str(), (HTTP_URL_CONTEXT)pListener, 0);
++#ifndef _UTF16_STRINGS
++    std::wstring host_uri_16 = conversions::to_wstring(host_uri);
++#endif
++
++    errorCode = HttpAddUrlToUrlGroup(urlGroupId,
++#ifdef _UTF16_STRINGS
++        host_uri.c_str(),
++#else
++        host_uri_16.c_str(),
++#endif
++        (HTTP_URL_CONTEXT)pListener, 0);
++
+     if (errorCode)
+     {
+         HttpCloseUrlGroup(urlGroupId);
+@@ -489,7 +518,12 @@
+             // HTTP_REQUEST::pRawUrl contains the raw URI that came across the wire.
+             // Use this instead since the CookedUrl is a mess of the URI components
+             // some encoded and some not.
++
++#ifdef _UTF16_STRINGS
+             m_msg.set_request_uri(utf8_to_utf16(m_request->pRawUrl));
++#else
++            m_msg.set_request_uri(m_request->pRawUrl);
++#endif
+         }
+         catch (const uri_exception& e)
+         {
+@@ -569,7 +603,11 @@
+         m_msg._get_impl()->_set_http_version(
+             {(uint8_t)m_request->Version.MajorVersion, (uint8_t)m_request->Version.MinorVersion});
+ 
++
++
++
+         // Retrieve the remote IP address
++#ifdef _UTF16_STRINGS
+         std::vector<wchar_t> remoteAddressBuffer(50);
+ 
+         if (m_request->Address.pRemoteAddress->sa_family == AF_INET6)
+@@ -588,7 +626,31 @@
+         }
+ 
+         m_msg._get_impl()->_set_remote_address(&remoteAddressBuffer[0]);
++#else
++        std::vector<char> remoteAddressBuffer(50);
+ 
++        if (m_request->Address.pRemoteAddress->sa_family == AF_INET6)
++        {
++            auto inAddr = &reinterpret_cast<SOCKADDR_IN6*>(m_request->Address.pRemoteAddress)->sin6_addr;
++            InetNtopA(AF_INET6, inAddr, &remoteAddressBuffer[0], remoteAddressBuffer.size());
++        }
++        else if (m_request->Address.pRemoteAddress->sa_family == AF_INET)
++        {
++            auto inAddr = &reinterpret_cast<SOCKADDR_IN*>(m_request->Address.pRemoteAddress)->sin_addr;
++            InetNtopA(AF_INET, inAddr, &remoteAddressBuffer[0], remoteAddressBuffer.size());
++        }
++        else
++        {
++            remoteAddressBuffer[0] = L'\0';
++        }
++
++        m_msg._get_impl()->_set_remote_address(&remoteAddressBuffer[0]);
++#endif
++
++
++
++
++
+         // Start reading in body from the network.
+         m_msg._get_impl()->_prepare_to_receive_data();
+         read_request_body_chunk();
+@@ -865,7 +927,11 @@
+     HTTP_RESPONSE win_api_response;
+     ZeroMemory(&win_api_response, sizeof(win_api_response));
+     win_api_response.StatusCode = m_response.status_code();
++#ifdef _UTF16_STRINGS
+     const std::string reason = utf16_to_utf8(m_response.reason_phrase());
++#else
++    const std::string reason = m_response.reason_phrase();
++#endif
+     win_api_response.pReason = reason.c_str();
+     win_api_response.ReasonLength = (USHORT)reason.size();
+     size_t content_length;
+@@ -926,8 +992,14 @@
+     int headerIndex = 0;
+     for (auto iter = m_response.headers().begin(); iter != m_response.headers().end(); ++iter, ++headerIndex)
+     {
++#ifdef _UTF16_STRINGS
+         m_headers_buffer[headerIndex * 2] = utf16_to_utf8(iter->first);
+         m_headers_buffer[headerIndex * 2 + 1] = utf16_to_utf8(iter->second);
++#else
++        m_headers_buffer[headerIndex * 2] = iter->first;
++        m_headers_buffer[headerIndex * 2 + 1] = iter->second;
++#endif
++
+         win_api_response.Headers.pUnknownHeaders[headerIndex].NameLength =
+             (USHORT)m_headers_buffer[headerIndex * 2].size();
+         win_api_response.Headers.pUnknownHeaders[headerIndex].pName = m_headers_buffer[headerIndex * 2].c_str();
+Index: Release/src/http/oauth/oauth1.cpp
+===================================================================
+--- Release/src/http/oauth/oauth1.cpp	(revision 183249)
++++ Release/src/http/oauth/oauth1.cpp	(working copy)
+@@ -62,8 +62,13 @@
+     DWORD hash_len = 0;
+     ULONG result_len = 0;
+ 
++#ifdef _UTF16_STRINGS
+     const auto& key_c = conversions::utf16_to_utf8(key);
+     const auto& data_c = conversions::utf16_to_utf8(data);
++ #else
++    const auto& key_c = key;
++    const auto& data_c = data;
++ #endif
+ 
+     status = BCryptOpenAlgorithmProvider(&alg_handle, BCRYPT_SHA1_ALGORITHM, nullptr, BCRYPT_ALG_HANDLE_HMAC_FLAG);
+     if (!NT_SUCCESS(status))
+Index: Release/src/json/json.cpp
+===================================================================
+--- Release/src/json/json.cpp	(revision 183249)
++++ Release/src/json/json.cpp	(working copy)
+@@ -195,7 +195,7 @@
+     );
+ }
+ 
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+ web::json::value web::json::value::string(const std::string& value)
+ {
+     std::unique_ptr<details::_Value> ptr =
+Index: Release/src/json/json_parsing.cpp
+===================================================================
+--- Release/src/json/json_parsing.cpp	(revision 183249)
++++ Release/src/json/json_parsing.cpp	(working copy)
+@@ -362,18 +362,25 @@
+     return _snprintf_s_l(ptr, n, _TRUNCATE, "%I64u", utility::details::scoped_c_thread_locale::c_locale(), val64);
+ }
+ 
++#if defined(_UTF16_STRINGS)
+ static int print_llu(wchar_t* ptr, size_t n, uint64_t val64)
+ {
+     return _snwprintf_s_l(ptr, n, _TRUNCATE, L"%I64u", utility::details::scoped_c_thread_locale::c_locale(), val64);
+ }
++#endif
++
+ static double anystod(const char* str)
+ {
+     return _strtod_l(str, nullptr, utility::details::scoped_c_thread_locale::c_locale());
+ }
++
++#if defined(_UTF16_STRINGS)
+ static double anystod(const wchar_t* str)
+ {
+     return _wcstod_l(str, nullptr, utility::details::scoped_c_thread_locale::c_locale());
+ }
++#endif
++
+ #else
+ static int __attribute__((__unused__)) print_llu(char* ptr, size_t n, unsigned long long val64)
+ {
+@@ -1232,7 +1239,7 @@
+     return _parse_stream(stream, error);
+ }
+ 
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+ web::json::value web::json::value::parse(const std::string& str) { return _parse_string(str); }
+ 
+ web::json::value web::json::value::parse(const std::string& str, std::error_code& error)
+Index: Release/src/json/json_serialization.cpp
+===================================================================
+--- Release/src/json/json_serialization.cpp	(revision 183249)
++++ Release/src/json/json_serialization.cpp	(working copy)
+@@ -29,7 +29,7 @@
+ // JSON Serialization
+ //
+ 
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+ void web::json::value::serialize(std::ostream& stream) const
+ {
+     // This has better performance than writing directly to stream.
+@@ -119,7 +119,7 @@
+     str.push_back('"');
+ }
+ 
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+ void web::json::details::format_string(const utility::string_t& key, std::string& str)
+ {
+     str.push_back('"');
+@@ -190,7 +190,7 @@
+     }
+ }
+ 
+-#ifdef _WIN32
++#ifdef _UTF16_STRINGS
+ 
+ void web::json::details::_String::format(std::basic_string<wchar_t>& str) const
+ {
+Index: Release/src/streams/fileio_win32.cpp
+===================================================================
+--- Release/src/streams/fileio_win32.cpp	(revision 183249)
++++ Release/src/streams/fileio_win32.cpp	(working copy)
+@@ -228,14 +228,21 @@
+     _ASSERTE(callback != nullptr);
+     _ASSERTE(filename != nullptr);
+ 
++#ifdef _UTF16_STRINGS
+     std::wstring name(filename);
++#else
++    std::string name(filename);
++#endif
+ 
+     pplx::create_task([=]() {
+         DWORD dwDesiredAccess, dwCreationDisposition, dwShareMode;
+         _get_create_flags(mode, prot, dwDesiredAccess, dwCreationDisposition, dwShareMode);
+-
++#ifdef _UTF16_STRINGS
+         HANDLE fh = ::CreateFileW(
+-            name.c_str(), dwDesiredAccess, dwShareMode, nullptr, dwCreationDisposition, FILE_FLAG_OVERLAPPED, 0);
++#else
++        HANDLE fh = ::CreateFileA(
++#endif
++         name.c_str(), dwDesiredAccess, dwShareMode, nullptr, dwCreationDisposition, FILE_FLAG_OVERLAPPED, 0);
+ 
+         _finish_create(fh, callback, mode, prot);
+     });
+Index: Release/src/utilities/asyncrt_utils.cpp
+===================================================================
+--- Release/src/utilities/asyncrt_utils.cpp	(revision 183249)
++++ Release/src/utilities/asyncrt_utils.cpp	(working copy)
+@@ -17,6 +17,8 @@
+ #include <cpprest/asyncrt_utils.h>
+ #include <stdexcept>
+ #include <string>
++#include <locale>
++#include <codecvt>
+ #include <time.h>
+ 
+ using namespace web;
+@@ -259,7 +261,11 @@
+     // strip exceeding characters of the initial resize call
+     buffer.resize(result);
+ 
++#ifdef _UTF16_STRINGS
+     return utility::conversions::to_utf8string(buffer);
++#else
++    return utility::conversions::to_string(buffer);
++#endif
+ }
+ 
+ std::error_condition windows_category_impl::default_error_condition(int errorCode) const CPPREST_NOEXCEPT
+@@ -618,6 +624,20 @@
+ 
+ utf16string __cdecl conversions::to_utf16string(const std::string& value) { return utf8_to_utf16(value); }
+ 
++std::wstring __cdecl conversions::to_wstring(const std::string& in)
++{
++    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
++    std::wstring wide = converter.from_bytes(in);
++    return wide;
++}
++
++std::string __cdecl conversions::to_string(const std::wstring& in)
++{
++    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
++    std::string narrow = converter.to_bytes(in);
++    return narrow;
++}
++
+ static const int64_t NtToUnixOffsetSeconds = 11644473600; // diff between windows and unix epochs (seconds)
+ 
+ static bool year_is_leap_year(int year) { return (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)); }
+Index: Release/src/utilities/web_utilities.cpp
+===================================================================
+--- Release/src/utilities/web_utilities.cpp	(revision 183249)
++++ Release/src/utilities/web_utilities.cpp	(working copy)
+@@ -47,7 +47,7 @@
+     }
+ }
+ 
+-winrt_encryption::winrt_encryption(const std::wstring& data)
++winrt_encryption::winrt_encryption(const ::utility::string_t& data)
+ {
+     auto provider = ref new Windows::Security::Cryptography::DataProtection::DataProtectionProvider(
+         ref new Platform::String(L"Local=user"));
+@@ -54,8 +54,8 @@
+ 
+     // Create buffer containing plain text password.
+     Platform::ArrayReference<unsigned char> arrayref(
+-        reinterpret_cast<unsigned char*>(const_cast<std::wstring::value_type*>(data.c_str())),
+-        static_cast<unsigned int>(data.size()) * sizeof(std::wstring::value_type));
++        reinterpret_cast<unsigned char*>(const_cast<::utility::string_t::value_type*>(data.c_str())),
++        static_cast<unsigned int>(data.size()) * sizeof(::utility::string_t::value_type));
+     Windows::Storage::Streams::IBuffer ^ plaintext =
+         Windows::Security::Cryptography::CryptographicBuffer::CreateFromByteArray(arrayref);
+     m_buffer = pplx::create_task(provider->ProtectAsync(plaintext));
+@@ -84,7 +84,7 @@
+ 
+     // Construct string and zero out memory from plain text buffer.
+     auto data = plaintext_string(
+-        new std::wstring(reinterpret_cast<const std::wstring::value_type*>(rawPlaintext), plaintext->Length / 2));
++        new ::utility::string_t(reinterpret_cast<const ::utility::string_t::value_type*>(rawPlaintext), plaintext->Length / 2));
+     SecureZeroMemory(rawPlaintext, plaintext->Length);
+     return std::move(data);
+ }
+@@ -91,7 +91,7 @@
+ 
+ #else  // ^^^ __cplusplus_winrt ^^^ // vvv !__cplusplus_winrt vvv
+ 
+-win32_encryption::win32_encryption(const std::wstring& data) : m_numCharacters(data.size())
++win32_encryption::win32_encryption(const ::utility::string_t& data) : m_numCharacters(data.size())
+ {
+     // Early return because CryptProtectMemory crashes with empty string
+     if (m_numCharacters == 0)
+@@ -99,12 +99,12 @@
+         return;
+     }
+ 
+-    if (data.size() > (std::numeric_limits<DWORD>::max)() / sizeof(wchar_t))
++    if (data.size() > (std::numeric_limits<DWORD>::max)() / sizeof(::utility::string_t::value_type))
+     {
+         throw std::length_error("Encryption string too long");
+     }
+ 
+-    const auto dataSizeDword = static_cast<DWORD>(data.size() * sizeof(wchar_t));
++    const auto dataSizeDword = static_cast<DWORD>(data.size() * sizeof(::utility::string_t::value_type));
+ 
+     // Round up dataSizeDword to be a multiple of CRYPTPROTECTMEMORY_BLOCK_SIZE
+     static_assert(CRYPTPROTECTMEMORY_BLOCK_SIZE == 16, "Power of 2 assumptions in this bit masking violated");
+@@ -125,8 +125,8 @@
+ plaintext_string win32_encryption::decrypt() const
+ {
+     // Copy the buffer and decrypt to avoid having to re-encrypt.
+-    auto result = plaintext_string(new std::wstring(reinterpret_cast<const std::wstring::value_type*>(m_buffer.data()),
+-                                                    m_buffer.size() / sizeof(wchar_t)));
++    auto result = plaintext_string(new ::utility::string_t(reinterpret_cast<const ::utility::string_t::value_type*>(m_buffer.data()),
++                                                    m_buffer.size() / sizeof(::utility::string_t::value_type)));
+     auto& data = *result;
+     if (!m_buffer.empty())
+     {
